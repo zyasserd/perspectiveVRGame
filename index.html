@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>My first three.js app</title>
+    <style>
+        body {
+            margin: 0;
+        }
+        #VRButton {
+            left: 25% !important;
+            width: 50% !important;
+            height: max(10%, 75px) !important;
+            font-size: 3em !important;
+        }
+    </style>
+</head>
+
+<body>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "./three.module.js"
+            }
+        }
+    </script>
+
+    <script type="module">
+
+        import * as THREE from 'three'; // https://cdnjs.com/libraries/three.js
+        import { VRButton } from './VRButton.js'; // https://github.com/mrdoob/three.js/blob/master/examples/jsm/webxr/VRButton.js
+
+        // renderer
+        const renderer = new THREE.WebGLRenderer();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+        renderer.xr.enabled = true;
+        document.body.appendChild(VRButton.createButton(renderer));
+
+        // scene
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color("white");
+
+        // light
+        {
+            const light = new THREE.PointLight(0xffffff, 1, 10);
+            light.position.set(0, 1.6, 0);
+            scene.add(light);
+
+            const ambientLight = new THREE.AmbientLight(0xFFFFFF, 0.5);
+            scene.add(ambientLight);
+        }
+        
+        // camera
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        scene.add(camera);
+        camera.position.set(0, 1.6, 0);
+        // camera starts looking at (0, 0, -1)
+
+        const l = 2.5;
+        const OctahedronVertices = [
+            new THREE.Vector3(0,  0+1.6,  l),
+            new THREE.Vector3( l, 0+1.6, 0),
+            new THREE.Vector3(0,  l+1.6, 0),
+            new THREE.Vector3(-l, 0+1.6, 0),
+            new THREE.Vector3(0, -l+1.6, 0),
+            new THREE.Vector3(0,  0+1.6, -l),
+        ];
+
+        const IndexedFaces = [
+            [0, 1, 2],
+            [0, 2, 3],
+            [0, 3, 4],
+            [0, 4, 1],
+            [5, 1, 2],
+            [5, 2, 3],
+            [5, 3, 4],
+            [5, 4, 1],
+        ];
+
+        const Colors = [
+            0xff0000,
+            0x00ff00,
+            0x0000ff,
+            0xffff00,
+            0x00ffff,
+            0xff00ff,
+            0x000000,
+            0xffa500
+        ]
+
+
+
+        function getFacesWith(vertices) {
+            return IndexedFaces.map(
+                (face, faceIndex) => [face, faceIndex]
+            ).filter((faceIndexed) => {
+                return vertices.every(i => faceIndexed[0].includes(i))
+            });
+        }
+
+        function getTriangleCentroid(p1, p2, p3) {
+            let t = new THREE.Triangle(p1, p2, p3);
+
+            let toReturn = new THREE.Vector3();
+            t.getMidpoint(toReturn);
+            
+            return toReturn;
+        }
+
+        function getTriangleNormal(p1, p2, p3) {
+            let t = new THREE.Triangle(p1, p2, p3);
+
+            let toReturn = new THREE.Vector3();
+            t.getNormal(toReturn);
+            
+            return toReturn;
+        }
+
+        function createTriangle(clr, p1, p2, p3, isBasicMaterial=false) {
+
+            // solid triangle
+            let geometry = new THREE.BufferGeometry();
+            geometry.setAttribute('position', new THREE.BufferAttribute(
+                new Float32Array([
+                    p1.x, p1.y, p1.z,
+                    p2.x, p2.y, p2.z,
+                    p3.x, p3.y, p3.z,
+                ]), 
+            3));
+
+            let material = isBasicMaterial ? 
+                new THREE.MeshBasicMaterial({ color: clr }):
+                new THREE.MeshPhongMaterial({ color: clr, flatShading: true });
+            material.side = THREE.DoubleSide; // Cause the material to be visible for inside and outside 
+
+            let mesh = new THREE.Mesh(geometry, material);
+
+            return mesh;
+        }
+
+        // function createHighlightedTriangle(clr, p1, p2, p3) {
+        //     let t = createTriangle(clr, p1, p2, p3);
+
+        //     let edges = new THREE.EdgesGeometry(t.geometry);
+        //     let lines = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0xffffff, linewidth: 5 }));
+
+        //     let group = new THREE.Group();
+        //     group.add(t)
+        //     group.add(lines);
+
+        //     return group;
+        // }
+
+        function createTriangleFromAltitude(clr, vertex, midpoint, normal) {
+
+            let altitude = new THREE.Vector3();
+            altitude.subVectors(vertex, midpoint);
+
+            const sideLength = altitude.length() * (2 / Math.sqrt(3));
+
+            let cross = new THREE.Vector3();
+            cross.crossVectors(altitude, normal);
+            cross.normalize();
+
+            let vertex2 = new THREE.Vector3();
+            vertex2.copy(midpoint);
+            vertex2.addScaledVector(cross, sideLength/2);
+
+            let vertex3 = new THREE.Vector3();
+            vertex3.copy(midpoint);
+            vertex3.addScaledVector(cross, -sideLength/2);
+
+
+            return createTriangle(clr, vertex, vertex2, vertex3, THREE.MeshBasicMaterial);
+
+        }
+
+        function createArrow(opposite, p2, p3, forPyramidPart=false) {
+
+            // math
+            let oppositeMidpoint = new THREE.Vector3();
+            oppositeMidpoint.lerpVectors(p2, p3, 0.5);
+
+            let vertex = new THREE.Vector3();
+            if (forPyramidPart)
+                vertex.lerpVectors(opposite, oppositeMidpoint, 1/3);
+            else
+                vertex.lerpVectors(opposite, oppositeMidpoint, 1);
+
+            let midpoint = new THREE.Vector3();
+            if (forPyramidPart)
+                midpoint.lerpVectors(opposite, oppositeMidpoint, 1/3 - 1/12);
+            else
+                midpoint.lerpVectors(opposite, oppositeMidpoint, 1 - 1/12);
+            
+
+            // drawing
+            let t = createTriangleFromAltitude(0xFFFFFF, vertex, midpoint, getTriangleNormal(opposite, p2, p3));
+            t.position.set(0, 0.05, 0); // just a gimmicky hack to solve the flickering problem
+            return t;
+
+        }
+
+        function polarToCartesian (r, theta, y) {
+            return new THREE.Vector3(r * Math.cos(theta), y || 0, r * Math.sin(theta));
+        }
+
+        function getObjectLookingAt() {
+            let raycaster = new THREE.Raycaster();
+
+            // cast a ray through the frustum
+            raycaster.setFromCamera({x: 0, y: 0}, camera);
+
+            // get the list of objects the ray intersected
+            const intersectedObjects = raycaster.intersectObjects(scene.children);
+
+            if (intersectedObjects.length) {
+                return intersectedObjects[0].object;
+            }
+        }
+
+
+
+        class Highlighter {
+            constructor() {
+                this.pickedObject = null;
+            }
+
+            render() {
+                // restore the color if there is a picked object
+                if (this.pickedObject) {
+                    this.pickedObject.material.color.setHex(this.pickedObject.defaultColor);
+                    this.pickedObject = undefined;
+                }
+            
+                this.pickedObject = getObjectLookingAt();
+
+                if (this.pickedObject && this.pickedObject.highlightColor) {
+                    this.pickedObject.material.color.setHex(this.pickedObject.highlightColor);
+                } else {
+                    this.pickedObject = undefined;
+                }
+            }
+        }
+
+        class Crosshair {
+            constructor() {
+
+                function makeDataTexture(data, width, height) {
+                    const texture = new THREE.DataTexture(data, width, height, THREE.RGBAFormat);
+                    texture.minFilter = THREE.NearestFilter;
+                    texture.magFilter = THREE.NearestFilter;
+                    texture.needsUpdate = true;
+                    return texture;
+                }
+                
+                this.cursorTexture = makeDataTexture(new Uint8Array([
+                    64, 64, 64, 64,       // dark gray
+                    255, 255, 255, 255,   // white
+                ]), 2, 1);
+
+
+
+                const cursorGeometry = new THREE.TorusGeometry(0.4, 0.1, 4, 64);
+                const cursorMaterial = new THREE.MeshBasicMaterial({
+                    color: 'white',
+                    transparent: true,
+                    map: this.cursorTexture,
+                    blending: THREE.CustomBlending,
+                    blendSrc: THREE.OneMinusDstColorFactor,
+                    blendDst: THREE.OneMinusSrcColorFactor,
+                });
+
+                this.cursor = new THREE.Mesh(cursorGeometry, cursorMaterial);
+                camera.add(this.cursor);
+                this.cursor.position.z = -1;
+
+                this.scale = 0.04;
+                this.cursor.scale.set(this.scale, this.scale, this.scale);
+
+                this.isLooping = false;
+                this.startTime = null;
+
+                this.duration = 1500; //! 1.5 sec to long press
+
+                this.onLongPress = null;
+            }
+
+            render(time) {
+                
+                if (!this.isLooping) {
+                    this.cursor.scale.set(this.scale, this.scale, this.scale);
+                    this.cursorTexture.offset.x = -0.5;
+                    return;
+                }
+
+                let progress = ((performance.now() - this.startTime) / this.duration) % 1;
+                this.cursorTexture.offset.x = THREE.MathUtils.mapLinear(progress, 0, 1, -0.5, 0.5);
+
+                if (progress > 0.95) {
+
+                    this.isLooping = false;
+                    this.onLongPress?.();
+
+                } else if (progress > 0.5) {
+
+                    let scale = THREE.MathUtils.mapLinear(progress, 0.5, 0.95, 0.04, 7); //! change size
+                    this.cursor.scale.set(scale, scale, scale);
+
+                } 
+                
+            }
+
+            start() {
+                this.startTime = performance.now();
+                this.isLooping = true;
+            }
+
+            end() {
+                this.isLooping = false;
+            }
+        }      
+
+        class TPart {
+            // Triangle Part Class
+            static R = 6;
+            static angles = [
+                0/3*Math.PI - 1/2*Math.PI, // (0, 0, -1) camera starts looking here
+                2/3*Math.PI - 1/2*Math.PI, 
+                4/3*Math.PI - 1/2*Math.PI 
+            ];
+
+            constructor(isGame) {
+
+                this.isGame = isGame;
+
+                this.faceIndex = 0; //!
+                this.currentFace = Array.from(IndexedFaces[this.faceIndex]);
+
+                this.history = [this.faceIndex];
+
+                const vertices = [
+                    polarToCartesian(TPart.R, TPart.angles[0]),
+                    polarToCartesian(TPart.R, TPart.angles[1]),
+                    polarToCartesian(TPart.R, TPart.angles[2]),
+                ];
+
+                this.triangle = createTriangle(
+                    Colors[this.faceIndex], 
+                    vertices[0],
+                    vertices[1],
+                    vertices[2],
+                );
+                scene.add(this.triangle);
+
+                this.arrows = [
+                    createArrow(vertices[0], vertices[1], vertices[2]),
+                    createArrow(vertices[1], vertices[0], vertices[2]),
+                    createArrow(vertices[2], vertices[0], vertices[1])
+                ];
+
+                // edge[0] is the left and 
+                // edge[1] is the right vertex of the arrow
+                // represented as an index of `this.currentFace`
+                this.arrows[0].edge = [1, 2];
+                this.arrows[1].edge = [2, 0];
+                this.arrows[2].edge = [0, 1];
+
+                this.arrows.forEach(arr => {
+                    arr.highlightColor = 0xD3D3D3;
+                    arr.defaultColor = arr.material.color.getHex();
+                    scene.add(arr);
+                });
+
+            }
+
+            controllerHandle() {
+                let obj = getObjectLookingAt();
+                if (obj?.edge) {
+
+                    // TODO AMINA: transition effect
+
+                    // get the face that share the edge
+                    const [newFace, newIndex] = 
+                        getFacesWith([
+                            this.currentFace[obj.edge[0]],
+                            this.currentFace[obj.edge[1]]
+                        ]).filter((faceIndexed) => faceIndexed[1] != this.faceIndex)[0];
+
+                    // get the vertex of the new face that is not shared
+                    const newVertex = newFace.filter(v => !this.currentFace.includes(v))[0];
+
+                    // swap the edge's vertices, mirror universe
+                    [this.currentFace[obj.edge[0]], this.currentFace[obj.edge[1]]] = 
+                        [this.currentFace[obj.edge[1]], this.currentFace[obj.edge[0]]];
+
+                    const newVertexIndex = ([0, 1, 2].filter(v => !obj.edge.includes(v)))[0];
+
+
+                    this.currentFace[newVertexIndex] = newVertex;
+                    this.faceIndex = newIndex;
+
+                    this.triangle.material.color.set(Colors[this.faceIndex]);
+
+
+
+                    // Game handling
+                    if (this.isGame && this.history.includes(this.faceIndex)) {
+                        // game failure
+                        // TODO AMINA: add failure sound
+                        console.log("game failure");
+
+                    }
+                    this.history.push(this.faceIndex);
+                    if (this.isGame && new Set(this.history).size == 8 && this.history.length == 8) {
+                        // game success
+                        // TODO AMINA: add success sound
+                        console.log("game success");
+                    }
+
+                    // TODO: display history
+                    // TODO: display score
+                    
+                }
+            }
+
+            dispose() {
+                scene.remove(this.triangle);
+                scene.remove(this.arr01);
+                scene.remove(this.arr02);
+                scene.remove(this.arr12);
+            }
+        }
+
+        class CPart {
+            // Center Part Class
+            constructor() {
+                this.objects = IndexedFaces.map((f, i) => {
+                    
+                    let t = createTriangle(Colors[i], OctahedronVertices[f[0]], OctahedronVertices[f[1]], OctahedronVertices[f[2]]);
+                    scene.add(t);
+
+                    return t;
+                });
+            }
+
+            dispose() {
+                this.objects.forEach((obj) => {
+                    scene.remove(obj)
+                });
+            }
+        }
+
+        class PPart {
+            // Pyramid Part Class
+            static R = 6;
+            static angles = [
+                0/2*Math.PI - 1/2*Math.PI, // (0, 0, -1) camera starts looking here
+                1/2*Math.PI - 1/2*Math.PI, 
+                2/2*Math.PI - 1/2*Math.PI,
+                3/2*Math.PI - 1/2*Math.PI 
+            ];
+
+            getFaceColor (a, b) {
+                return Colors[getFacesWith([this.vertexTop, this.vertexOthers[a], this.vertexOthers[b]])[0][1]];
+            };
+
+            constructor() {
+                
+                // indices of the top vertex and the others
+                this.vertexTop = 0;
+                this.vertexOthers = [1, 2, 3, 4];
+
+                let coordTop = new THREE.Vector3(0, 0, 0);
+                let coordOthers = [
+                    polarToCartesian(PPart.R, PPart.angles[0], -PPart.R),
+                    polarToCartesian(PPart.R, PPart.angles[1], -PPart.R),
+                    polarToCartesian(PPart.R, PPart.angles[2], -PPart.R),
+                    polarToCartesian(PPart.R, PPart.angles[3], -PPart.R),
+                ];
+
+                this.triangles = [
+                    createTriangle(
+                        this.getFaceColor(0, 1),
+                        coordTop,
+                        coordOthers[0], coordOthers[1],
+                    ),
+                    createTriangle(
+                        this.getFaceColor(1, 2),
+                        coordTop,
+                        coordOthers[1], coordOthers[2   ],
+                    ),
+                    createTriangle(
+                        this.getFaceColor(2, 3),
+                        coordTop,
+                        coordOthers[2], coordOthers[3],
+                    ),
+                    createTriangle(
+                        this.getFaceColor(3, 0),
+                        coordTop,
+                        coordOthers[3], coordOthers[0],
+                    ),
+                ];
+
+                this.triangles.forEach(t => {
+                    scene.add(t);
+                });
+
+
+                this.arrows = [
+                    createArrow(coordTop, coordOthers[0], coordOthers[1], true),
+                    createArrow(coordTop, coordOthers[1], coordOthers[2], true),
+                    createArrow(coordTop, coordOthers[2], coordOthers[3], true),
+                    createArrow(coordTop, coordOthers[3], coordOthers[0], true),
+                ];
+
+                this.arrows[0].edge = [0, 1];
+                this.arrows[1].edge = [1, 2];
+                this.arrows[2].edge = [2, 3];
+                this.arrows[3].edge = [3, 0];
+
+                this.arrows.forEach(arr => {
+                    arr.highlightColor = 0xD3D3D3;
+                    arr.defaultColor = arr.material.color.getHex();
+                    scene.add(arr);
+                });
+            }
+
+            controllerHandle() {
+                let obj = getObjectLookingAt();
+                if (obj?.edge) {
+
+                    // TODO AMINA: transition effect
+
+                    const faceInAction = [
+                        this.vertexOthers[obj.edge[0]],
+                        this.vertexOthers[obj.edge[1]],
+                        this.vertexTop
+                    ]
+
+                    this.vertexTop = 
+                        getFacesWith([
+                            this.vertexOthers[obj.edge[0]],
+                            this.vertexOthers[obj.edge[1]]
+                        ]).flatMap((faceIndexed) => faceIndexed[0]).filter(v => !faceInAction.includes(v))[0];
+
+
+                    // swap the edge's vertices, mirror universe
+                    [this.vertexOthers[obj.edge[0]], this.vertexOthers[obj.edge[1]]] = 
+                        [this.vertexOthers[obj.edge[1]], this.vertexOthers[obj.edge[0]]];
+
+                    let edgeComplement = [0, 1, 2, 3].filter(i => !obj.edge.includes(i));
+
+                    [this.vertexOthers[edgeComplement[0]], this.vertexOthers[edgeComplement[1]]] = 
+                        [this.vertexOthers[edgeComplement[1]], this.vertexOthers[edgeComplement[0]]];
+
+
+                    this.triangles[0].material.color.set(this.getFaceColor(0, 1));                    
+                    this.triangles[1].material.color.set(this.getFaceColor(1, 2));                    
+                    this.triangles[2].material.color.set(this.getFaceColor(2, 3));                    
+                    this.triangles[3].material.color.set(this.getFaceColor(3, 0));                    
+                }
+            }
+
+            dispose() {
+                this.triangles.forEach((obj) => {
+                    scene.remove(obj)
+                });
+                this.arrows.forEach((obj) => {
+                    scene.remove(obj)
+                });
+            }
+        }
+        
+
+        /*
+            INITIALIZATION SECTION
+        */
+        let partsStack = [TPart, CPart, TPart, PPart, TPart, TPart];
+        let partsN = partsStack.length;
+        function transitionPart() { // call this function when you transition
+            let newLevelN = partsN - partsStack.length;
+            let isFirstLevel = (newLevelN == 0); // meaning it should be a *non-gamified* triangle part
+
+            if (partsStack.length != 0) {
+                currentPart?.dispose?.();
+                currentPart = new (partsStack.pop())(!isFirstLevel);
+            }
+        }
+
+        let currentPart = null;
+        let highlighter = new Highlighter();
+        let crosshair = new Crosshair();
+        crosshair.onLongPress = function () {
+            transitionPart();
+        };
+        renderer.xr.addEventListener('sessionstart', (event) => {
+            transitionPart();
+        });
+
+        // controller
+        let cardboardPressController = renderer.xr.getController(0);
+        cardboardPressController.addEventListener('selectstart', (a) => {
+            currentPart.controllerHandle?.();
+            crosshair.start();
+        });
+        cardboardPressController.addEventListener('selectend', () => {
+            crosshair.end();
+        });
+
+        // rendering loop
+        renderer.setAnimationLoop(function (time) { 
+            highlighter.render();
+            crosshair.render();
+            renderer.render(scene, camera);
+        });
+
+    </script>
+</body>
+
+</html>
