@@ -88,17 +88,17 @@
         //     0xff00ff,
         //     0x000000,
         //     0xffa500
-        // ]
+        // ];
         const Colors = [
-            0x9EA8A4,
-            0x92960E,
-            0xD1741D,
-            0xBA7FAE,
-            0x7186D1,
-            0x7E8554,
-            0xAEBFD1,
-            0xC9D198,
-        ]
+            0x9451AD,
+            0x287A41,
+            0x608BE0,
+            0xE0DEAB,
+            0xAB8438,
+            0xF57F36,
+            0xF7809E,
+            0x002B3B
+        ];
 
 
 
@@ -660,6 +660,15 @@
         /*
             INITIALIZATION SECTION
         */
+        // [[6 stages]]
+        // [1,2] Triangle (explore) => Triangle (game) =>
+        // [3,4] Pyramid  (explore) => Triangle (game) => 
+        // [5,6] Center   (explore) => Triangle (game)
+
+        // [[how to win the game]]
+        // in case it's too difficult for you
+        // (3R -> 2L -> 2R)
+
         let partsStack = [TPart, CPart, TPart, PPart, TPart, TPart];
         let partsN = partsStack.length;
         function transitionPart() { // call this function when you transition
