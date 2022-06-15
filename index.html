@@ -3,7 +3,7 @@
 
 <head>
     <meta charset="utf-8">
-    <title>My first three.js app</title>
+    <title>Perspective</title>
     <style>
         body {
             margin: 0;
@@ -79,15 +79,25 @@
             [5, 4, 1],
         ];
 
+        // const Colors = [
+        //     0xff0000,
+        //     0x00ff00,
+        //     0x0000ff,
+        //     0xffff00,
+        //     0x00ffff,
+        //     0xff00ff,
+        //     0x000000,
+        //     0xffa500
+        // ]
         const Colors = [
-            0xff0000,
-            0x00ff00,
-            0x0000ff,
-            0xffff00,
-            0x00ffff,
-            0xff00ff,
-            0x000000,
-            0xffa500
+            0x9EA8A4,
+            0x92960E,
+            0xD1741D,
+            0xBA7FAE,
+            0x7186D1,
+            0x7E8554,
+            0xAEBFD1,
+            0xC9D198,
         ]
 
 
@@ -222,6 +232,50 @@
         }
 
 
+        class Sounds {
+            static player = new Audio();
+
+            static change(src) {
+                // player.paysed
+                if (Sounds.player && !Sounds.player.paused)
+                    Sounds.player.pause();
+                Sounds.player = new Audio(src);
+                Sounds.player.play();
+            }
+
+            static playT() {
+                Sounds.change("./sounds/TPart.mp3");
+            }
+
+            static playTGamified() {
+                Sounds.change("./sounds/task.mp3");
+            }
+
+            static playP() {
+                Sounds.change("./sounds/PPart.mp3");
+            }
+
+            static playC() {
+                Sounds.change("./sounds/CPart.mp3");
+            }
+
+            static playEnd() {
+                Sounds.change("./sounds/ending.mp3");
+            }
+
+            static playSuccess() {
+                Sounds.change("./sounds/success.mp3");
+            }
+
+            static playFailure() {
+                Sounds.change("./sounds/failure.mp3");
+
+            }
+
+            static playPortal() {
+                Sounds.change("./sounds/portal.mp3");
+            }
+        }
 
         class Highlighter {
             constructor() {
@@ -332,9 +386,10 @@
                 4/3*Math.PI - 1/2*Math.PI 
             ];
 
-            constructor(isGame) {
+            constructor(isGame, isLastPart) {
 
                 this.isGame = isGame;
+                this.isLastPart = isLastPart;
 
                 this.faceIndex = 0; //!
                 this.currentFace = Array.from(IndexedFaces[this.faceIndex]);
@@ -374,13 +429,21 @@
                     scene.add(arr);
                 });
 
+
+                // Sound Effects
+                if (this.isGame)
+                    Sounds.playTGamified();
+                else 
+                    Sounds.playT(); 
+
             }
 
             controllerHandle() {
                 let obj = getObjectLookingAt();
                 if (obj?.edge) {
 
-                    // TODO AMINA: transition effect
+                    // transition effect sound
+                    Sounds.playPortal();
 
                     // get the face that share the edge
                     const [newFace, newIndex] = 
@@ -407,22 +470,35 @@
 
 
                     // Game handling
-                    if (this.isGame && this.history.includes(this.faceIndex)) {
-                        // game failure
-                        // TODO AMINA: add failure sound
-                        console.log("game failure");
+                    if (this.isGame)
+                    {
+                        if (this.history.includes(this.faceIndex)) {
+                            // game failure
+                            
+                            console.log("DEBUG: game failure");
+                            if (this.isLastPart)
+                                Sounds.playEnd();
+                            else
+                                Sounds.playFailure();   
+                            Sounds.player.onended = function () {
+                                transitionPart(); // transport to next step
+                            }
+                        }
+                        this.history.push(this.faceIndex);
+                        if (new Set(this.history).size == 8 && this.history.length == 8) {
+                            // game success
 
-                    }
-                    this.history.push(this.faceIndex);
-                    if (this.isGame && new Set(this.history).size == 8 && this.history.length == 8) {
-                        // game success
-                        // TODO AMINA: add success sound
-                        console.log("game success");
+                            console.log("DEBUG: game success");
+                            if (this.isLastPart)
+                                Sounds.playEnd();
+                            else
+                                Sounds.playSuccess(); 
+                            Sounds.player.onended = function () {
+                                transitionPart(); // transport to next step
+                            }
+                        }
                     }
 
-                    // TODO: display history
-                    // TODO: display score
-                    
                 }
             }
 
@@ -431,25 +507,6 @@
                 scene.remove(this.arr01);
                 scene.remove(this.arr02);
                 scene.remove(this.arr12);
-            }
-        }
-
-        class CPart {
-            // Center Part Class
-            constructor() {
-                this.objects = IndexedFaces.map((f, i) => {
-                    
-                    let t = createTriangle(Colors[i], OctahedronVertices[f[0]], OctahedronVertices[f[1]], OctahedronVertices[f[2]]);
-                    scene.add(t);
-
-                    return t;
-                });
-            }
-
-            dispose() {
-                this.objects.forEach((obj) => {
-                    scene.remove(obj)
-                });
             }
         }
 
@@ -526,13 +583,17 @@
                     arr.defaultColor = arr.material.color.getHex();
                     scene.add(arr);
                 });
+
+                Sounds.playP();
             }
 
             controllerHandle() {
                 let obj = getObjectLookingAt();
                 if (obj?.edge) {
 
-                    // TODO AMINA: transition effect
+                    // transition effect sound
+                    Sounds.playPortal();
+
 
                     const faceInAction = [
                         this.vertexOthers[obj.edge[0]],
@@ -572,8 +633,29 @@
                     scene.remove(obj)
                 });
             }
-        }
+        }     
         
+        class CPart {
+            // Center Part Class
+            constructor() {
+                this.objects = IndexedFaces.map((f, i) => {
+                    
+                    let t = createTriangle(Colors[i], OctahedronVertices[f[0]], OctahedronVertices[f[1]], OctahedronVertices[f[2]]);
+                    scene.add(t);
+
+                    return t;
+                });
+
+                Sounds.playC();
+            }
+
+            dispose() {
+                this.objects.forEach((obj) => {
+                    scene.remove(obj)
+                });
+            }
+        }
+
 
         /*
             INITIALIZATION SECTION
@@ -581,12 +663,13 @@
         let partsStack = [TPart, CPart, TPart, PPart, TPart, TPart];
         let partsN = partsStack.length;
         function transitionPart() { // call this function when you transition
-            let newLevelN = partsN - partsStack.length;
-            let isFirstLevel = (newLevelN == 0); // meaning it should be a *non-gamified* triangle part
+            
+            let isFirstLevel = (partsStack.length == partsN); // meaning it should be a *non-gamified* triangle part
+            let isLastLevel = (partsStack.length == 1);
 
             if (partsStack.length != 0) {
                 currentPart?.dispose?.();
-                currentPart = new (partsStack.pop())(!isFirstLevel);
+                currentPart = new (partsStack.pop())(!isFirstLevel, isLastLevel);
             }
         }
 
